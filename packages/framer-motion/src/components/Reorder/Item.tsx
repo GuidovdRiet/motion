@@ -1,14 +1,10 @@
-import { invariant } from "../../utils/errors"
+import { PanInfo } from "gestures/pan/PanSession"
 import * as React from "react"
-import {
-    ReactHTML,
-    FunctionComponent,
-    useContext,
-    forwardRef,
-} from "react"
+import { FunctionComponent, ReactHTML, forwardRef, useContext } from "react"
 import { ReorderContext } from "../../context/ReorderContext"
 import { motion } from "../../render/dom/motion"
 import { HTMLMotionProps } from "../../render/html/types"
+import { invariant } from "../../utils/errors"
 import { useConstant } from "../../utils/use-constant"
 import { useMotionValue } from "../../value/use-motion-value"
 import { useTransform } from "../../value/use-transform"
@@ -36,6 +32,14 @@ export interface Props<V> {
      * @default true
      */
     layout?: true | "position"
+
+    /**
+     * Reference to the parent scrollable element. This is used to scroll the parent when the item is dragged to the top or bottom.
+     *
+     * @public
+     * @default undefined
+     */
+    scrollParentRef?: React.RefObject<any>
 }
 
 function useDefaultMotionValue(value: any, defaultValue: number = 0) {
@@ -54,6 +58,7 @@ export function ReorderItem<V>(
         as = "li",
         onDrag,
         layout = true,
+        scrollParentRef,
         ...props
     }: ReorderItemProps<V>,
     externalRef?: React.ForwardedRef<any>
@@ -61,6 +66,20 @@ export function ReorderItem<V>(
     const Component = useConstant(() => motion(as)) as FunctionComponent<
         React.PropsWithChildren<HTMLMotionProps<any> & { ref?: React.Ref<any> }>
     >
+
+    function scrollParent(direction: "up" | "down") {
+        if (scrollParentRef?.current === null) return
+
+        console.log({
+            scrollParentRef,
+        })
+
+        if (direction === "up") {
+            scrollParentRef.current.scrollTop -= 10
+        } else if (direction === "down") {
+            scrollParentRef.current.scrollTop += 10
+        }
+    }
 
     const context = useContext(ReorderContext)
     const point = {
@@ -76,6 +95,33 @@ export function ReorderItem<V>(
 
     const { axis, registerItem, updateOrder } = context!
 
+    const handleDrag = (
+        event: MouseEvent | TouchEvent | PointerEvent,
+        gesturePoint: PanInfo
+    ) => {
+        const { velocity } = gesturePoint
+        velocity[axis] && updateOrder(value, point[axis].get(), velocity[axis])
+
+        // Scroll logic for parent scrollable element
+        if (scrollParentRef && event.target instanceof HTMLElement) {
+            const parent = event.target.parentElement
+            const threshold = 50 // px from border to start scrolling
+            const { top, bottom } = event.target.getBoundingClientRect()
+
+            if (!parent) return
+            if (top <= parent.getBoundingClientRect().top + threshold) {
+                scrollParent("up")
+            } else if (
+                bottom >=
+                parent.getBoundingClientRect().bottom - threshold
+            ) {
+                scrollParent("down")
+            }
+        }
+
+        onDrag && onDrag(event, gesturePoint)
+    }
+
     return (
         <Component
             drag={axis}
@@ -83,13 +129,7 @@ export function ReorderItem<V>(
             dragSnapToOrigin
             style={{ ...style, x: point.x, y: point.y, zIndex }}
             layout={layout}
-            onDrag={(event, gesturePoint) => {
-                const { velocity } = gesturePoint
-                velocity[axis] &&
-                    updateOrder(value, point[axis].get(), velocity[axis])
-
-                onDrag && onDrag(event, gesturePoint)
-            }}
+            onDrag={handleDrag}
             onLayoutMeasure={(measured) => registerItem(value, measured)}
             ref={externalRef}
             ignoreStrict

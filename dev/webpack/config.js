@@ -79,7 +79,7 @@ module.exports = {
     plugins: [
         new ReactRefreshWebpackPlugin(),
         new ForkTsCheckerWebpackPlugin({
-            typescript: { configFile: "./tsconfig.json" },
+            typescript: { configFile: "./dev/tsconfig.json" },
         }),
         new webpack.HotModuleReplacementPlugin(),
     ],
